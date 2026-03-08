@@ -135,6 +135,12 @@
             cameraX: 0
         };
 
+        // Sprite Sheet Management
+        const sprites = {
+            hero: new Image()
+        };
+        sprites.hero.src = 'images/hero-sword.png';
+
         function resize() {
             const scale = Math.min(window.innerWidth / game.width, window.innerHeight / game.height);
             canvas.width = window.innerWidth;
@@ -150,12 +156,51 @@
         window.addEventListener('keyup', e => keys[e.code] = false);
         window.addEventListener('mousedown', e => { if(e.button === 0) player.attack(); });
 
+        // Sprite Animation System
+        class SpriteAnimation {
+            constructor(spriteSheet, frameWidth, frameHeight, frames, frameDuration = 10) {
+                this.spriteSheet = spriteSheet;
+                this.frameWidth = frameWidth;
+                this.frameHeight = frameHeight;
+                this.frames = frames; // Array of {x, y} coordinates
+                this.frameDuration = frameDuration;
+                this.currentFrame = 0;
+                this.timer = 0;
+            }
+
+            update() {
+                this.timer++;
+                if (this.timer >= this.frameDuration) {
+                    this.currentFrame = (this.currentFrame + 1) % this.frames.length;
+                    this.timer = 0;
+                }
+            }
+
+            draw(ctx, x, y, facing = 1) {
+                if (!this.spriteSheet.complete) return;
+
+                const frame = this.frames[this.currentFrame];
+                ctx.save();
+                
+                // Flip horizontally if facing left
+                if (facing === -1) {
+                    ctx.translate(x + this.frameWidth, y);
+                    ctx.scale(-1, 1);
+                    ctx.drawImage(this.spriteSheet, frame.x, frame.y, this.frameWidth, this.frameHeight, 0, 0, this.frameWidth, this.frameHeight);
+                } else {
+                    ctx.drawImage(this.spriteSheet, frame.x, frame.y, this.frameWidth, this.frameHeight, x, y, this.frameWidth, this.frameHeight);
+                }
+                
+                ctx.restore();
+            }
+        }
+
         class Player {
             constructor() {
                 this.x = 100;
                 this.y = 200;
-                this.width = 40;
-                this.height = 60;
+                this.width = 48; // Updated to match sprite
+                this.height = 64; // Updated to match sprite
                 this.vx = 0;
                 this.vy = 0;
                 this.speed = 5;
@@ -165,6 +210,25 @@
                 this.isAttacking = false;
                 this.attackTimer = 0;
                 this.health = 100;
+                
+                // Animation states
+                this.animations = {
+                    idle: new SpriteAnimation(sprites.hero, 48, 64, [
+                        {x: 0, y: 0}, {x: 48, y: 0}, {x: 96, y: 0}, {x: 144, y: 0}
+                    ], 15),
+                    walk: new SpriteAnimation(sprites.hero, 48, 64, [
+                        {x: 0, y: 64}, {x: 48, y: 64}, {x: 96, y: 64}, {x: 144, y: 64}, 
+                        {x: 192, y: 64}, {x: 240, y: 64}
+                    ], 8),
+                    jump: new SpriteAnimation(sprites.hero, 48, 64, [
+                        {x: 0, y: 128}, {x: 48, y: 128}
+                    ], 20),
+                    attack: new SpriteAnimation(sprites.hero, 48, 64, [
+                        {x: 0, y: 192}, {x: 48, y: 192}, {x: 96, y: 192}, {x: 144, y: 192}
+                    ], 6)
+                };
+                
+                this.currentAnimation = this.animations.idle;
             }
 
             update() {
@@ -207,6 +271,9 @@
                     this.grounded = true;
                 }
 
+                // Animation State Logic
+                this.updateAnimation();
+
                 // Camera follow
                 game.cameraX = this.x - 200;
             }
@@ -216,30 +283,25 @@
                 this.attackTimer = 15;
             }
 
-            draw() {
-                ctx.save();
-                ctx.translate(this.x - game.cameraX, this.y);
-
-                // Body (Placeholder)
-                ctx.fillStyle = '#8b4513'; // Reddish brown like the image
-                ctx.fillRect(0, 0, this.width, this.height);
-                
-                // Head
-                ctx.fillStyle = '#ffdbac';
-                ctx.fillRect(10, -10, 20, 20);
-
-                // Sword
+            updateAnimation() {
+                // Determine which animation to play
                 if (this.isAttacking) {
-                    ctx.fillStyle = '#ddd';
-                    const angle = (this.facing === 1) ? -Math.PI/4 : Math.PI/4;
-                    ctx.rotate(angle);
-                    ctx.fillRect(this.facing === 1 ? 20 : -40, 10, 40, 10);
+                    this.currentAnimation = this.animations.attack;
+                } else if (!this.grounded) {
+                    this.currentAnimation = this.animations.jump;
+                } else if (Math.abs(this.vx) > 0.1) {
+                    this.currentAnimation = this.animations.walk;
                 } else {
-                    ctx.fillStyle = '#bbb';
-                    ctx.fillRect(this.facing === 1 ? 30 : -10, 20, 10, 30);
+                    this.currentAnimation = this.animations.idle;
                 }
 
-                ctx.restore();
+                // Update the current animation
+                this.currentAnimation.update();
+            }
+
+            draw() {
+                // Draw the current animation
+                this.currentAnimation.draw(ctx, this.x - game.cameraX, this.y, this.facing);
             }
         }
 
